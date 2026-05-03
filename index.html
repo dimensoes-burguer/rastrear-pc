@@ -19,11 +19,10 @@
       --muted: #d1d5db;
       --text: #f9fafb;
       --purple: #7e22ce;
+      --yellow: #facc15;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -34,7 +33,7 @@
     }
 
     .topo {
-      min-height: 70px;
+      min-height: 76px;
       padding: 12px 18px;
       background:
         radial-gradient(circle at left, rgba(34, 197, 94, 0.18), transparent 38%),
@@ -75,14 +74,14 @@
       color: white;
       font-weight: bold;
       cursor: pointer;
+      font-size: 13px;
     }
 
-    button.secundario {
-      background: #374151;
-    }
+    button.secundario { background: #374151; }
+    button.perigo { background: #b91c1c; }
 
     #map {
-      height: calc(100vh - 70px);
+      height: calc(100vh - 76px);
       width: 100%;
       background: #0f172a;
     }
@@ -97,13 +96,22 @@
       font-weight: bold;
     }
 
+    .loja {
+      color: #facc15;
+      font-weight: bold;
+    }
+
     .popup {
       font-family: Arial, sans-serif;
       line-height: 1.45;
     }
 
-    .popup b {
-      font-size: 15px;
+    .popup b { font-size: 15px; }
+
+    .popup button {
+      margin-top: 8px;
+      width: 100%;
+      padding: 8px;
     }
 
     .painel {
@@ -111,9 +119,9 @@
       z-index: 999;
       left: 12px;
       bottom: 18px;
-      width: 310px;
+      width: 340px;
       max-width: calc(100vw - 24px);
-      max-height: 42vh;
+      max-height: 48vh;
       overflow: auto;
       background: rgba(17, 24, 39, 0.94);
       color: white;
@@ -153,6 +161,18 @@
       display: block;
     }
 
+    .linha-botoes {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .linha-botoes button {
+      flex: 1;
+      padding: 8px 6px;
+      font-size: 12px;
+    }
+
     .vazio {
       color: var(--muted);
       font-size: 14px;
@@ -160,24 +180,18 @@
     }
 
     @media (max-width: 700px) {
-      body {
-        overflow: auto;
-      }
+      body { overflow: auto; }
 
-      .topo {
-        min-height: auto;
-      }
+      .topo { min-height: auto; }
 
-      #map {
-        height: calc(100vh - 112px);
-      }
+      #map { height: calc(100vh - 126px); }
 
       .painel {
         left: 8px;
         right: 8px;
         bottom: 12px;
         width: auto;
-        max-height: 34vh;
+        max-height: 38vh;
       }
     }
   </style>
@@ -191,6 +205,7 @@
     </div>
 
     <div class="acoes">
+      <button onclick="centralizarLoja()">Ver loja</button>
       <button onclick="centralizarTodos()">Centralizar todos</button>
       <button class="secundario" onclick="carregarMotoboys()">Atualizar agora</button>
     </div>
@@ -206,8 +221,13 @@
   <script>
     const FIREBASE_URL = "https://dimensoesburguer-85c0f-default-rtdb.firebaseio.com";
 
-    // Centro aproximado de Goiânia/Aparecida. Ajuste se quiser.
-    const map = L.map("map").setView([-16.6869, -49.2648], 13);
+    const LOJA = {
+      nome: "Dimensões Burguer",
+      lat: -16.650294,
+      lng: -49.1533275
+    };
+
+    const map = L.map("map").setView([LOJA.lat, LOJA.lng], 14);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
@@ -216,6 +236,24 @@
 
     const marcadores = {};
     let ultimosDados = {};
+
+    const iconeLoja = L.divIcon({
+      className: "",
+      html: `<div style="
+        width: 34px;
+        height: 34px;
+        background: #facc15;
+        border: 3px solid #111827;
+        border-radius: 50%;
+        box-shadow: 0 0 20px rgba(250,204,21,.8);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:18px;
+      ">🍔</div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
 
     const iconeOnline = L.divIcon({
       className: "",
@@ -246,6 +284,25 @@
       iconAnchor: [11, 11]
     });
 
+    const marcadorLoja = L.marker([LOJA.lat, LOJA.lng], { icon: iconeLoja })
+      .addTo(map)
+      .bindPopup(`
+        <div class="popup">
+          <b>${LOJA.nome}</b><br>
+          <span class="loja">PONTO FIXO DA LOJA</span><br>
+          Coordenadas: ${LOJA.lat}, ${LOJA.lng}<br>
+          <a href="https://www.google.com/maps?q=${LOJA.lat},${LOJA.lng}" target="_blank">Abrir loja no Google Maps</a>
+        </div>
+      `);
+
+    const circuloLoja = L.circle([LOJA.lat, LOJA.lng], {
+      radius: 250,
+      color: "#facc15",
+      fillColor: "#facc15",
+      fillOpacity: 0.08,
+      weight: 2
+    }).addTo(map);
+
     function tempoTexto(timestamp) {
       if (!timestamp) return "sem data";
 
@@ -268,20 +325,49 @@
       if (!motoboy || !motoboy.ultima_atualizacao) return false;
 
       const diferenca = Date.now() - motoboy.ultima_atualizacao;
-
-      // Considera online se atualizou nos últimos 60 segundos e não clicou em PARAR.
       return motoboy.ativo === true && diferenca <= 60000;
+    }
+
+    function distanciaKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function distanciaTexto(km) {
+      if (!isFinite(km)) return "não calculada";
+      if (km < 1) return `${Math.round(km * 1000)} m`;
+      return `${km.toFixed(2).replace(".", ",")} km`;
+    }
+
+    function linkRotaLojaAteMotoboy(m) {
+      return `https://www.google.com/maps/dir/?api=1&origin=${LOJA.lat},${LOJA.lng}&destination=${m.lat},${m.lng}&travelmode=driving`;
     }
 
     function criarPopup(id, m, online) {
       const mapsUrl = `https://www.google.com/maps?q=${m.lat},${m.lng}`;
+      const rotaUrl = linkRotaLojaAteMotoboy(m);
+      const dist = distanciaKm(LOJA.lat, LOJA.lng, Number(m.lat), Number(m.lng));
+
       return `
         <div class="popup">
           <b>${m.nome || id}</b><br>
           Status: <span class="${online ? "online" : "offline"}">${online ? "ONLINE" : "OFFLINE"}</span><br>
+          Distância da loja: <b>${distanciaTexto(dist)}</b><br>
           Última atualização: ${tempoTexto(m.ultima_atualizacao)}<br>
           Precisão: ${m.precisao ? Math.round(m.precisao) + "m" : "não informado"}<br>
-          <a href="${mapsUrl}" target="_blank">Abrir no Google Maps</a>
+          <a href="${mapsUrl}" target="_blank">Abrir posição no Google Maps</a><br>
+          <a href="${rotaUrl}" target="_blank">Abrir rota loja → motoboy</a>
+          <button class="perigo" onclick="excluirMotoboy('${id}', '${(m.nome || id).replace(/'/g, "\\'")}')">Excluir motoboy</button>
         </div>
       `;
     }
@@ -309,12 +395,22 @@
 
       lista.innerHTML = itens.map(m => {
         const online = estaOnline(m);
+        const dist = distanciaKm(LOJA.lat, LOJA.lng, Number(m.lat), Number(m.lng));
+        const rotaUrl = linkRotaLojaAteMotoboy(m);
+
         return `
-          <div class="motoboy-card" onclick="focarMotoboy('${m.id}')">
-            <strong>${m.nome || m.id}</strong>
-            <small>Status: <span class="${online ? "online" : "offline"}">${online ? "ONLINE" : "OFFLINE"}</span></small>
-            <small>Atualizou: ${tempoTexto(m.ultima_atualizacao)}</small>
-            <small>Precisão: ${m.precisao ? Math.round(m.precisao) + "m" : "não informado"}</small>
+          <div class="motoboy-card">
+            <div onclick="focarMotoboy('${m.id}')">
+              <strong>${m.nome || m.id}</strong>
+              <small>Status: <span class="${online ? "online" : "offline"}">${online ? "ONLINE" : "OFFLINE"}</span></small>
+              <small>Distância da loja: <b>${distanciaTexto(dist)}</b></small>
+              <small>Atualizou: ${tempoTexto(m.ultima_atualizacao)}</small>
+              <small>Precisão: ${m.precisao ? Math.round(m.precisao) + "m" : "não informado"}</small>
+            </div>
+            <div class="linha-botoes">
+              <button onclick="window.open('${rotaUrl}', '_blank')">Rota</button>
+              <button class="perigo" onclick="excluirMotoboy('${m.id}', '${(m.nome || m.id).replace(/'/g, "\\'")}')">Excluir</button>
+            </div>
           </div>
         `;
       }).join("");
@@ -333,7 +429,6 @@
 
         let totalOnline = 0;
         let totalComLocalizacao = 0;
-        const bounds = [];
 
         if (!dados) {
           document.getElementById("status").innerText = "Nenhum motoboy encontrado.";
@@ -351,9 +446,7 @@
           const online = estaOnline(m);
           if (online) totalOnline++;
 
-          const latlng = [m.lat, m.lng];
-          bounds.push(latlng);
-
+          const latlng = [Number(m.lat), Number(m.lng)];
           const popup = criarPopup(id, m, online);
           const icone = online ? iconeOnline : iconeOffline;
 
@@ -365,6 +458,14 @@
           }
 
           marcadores[id].bindPopup(popup);
+        });
+
+        // Remove do mapa marcadores que foram apagados do Firebase.
+        Object.keys(marcadores).forEach(id => {
+          if (!dados[id]) {
+            map.removeLayer(marcadores[id]);
+            delete marcadores[id];
+          }
         });
 
         atualizarListaLateral(dados);
@@ -381,22 +482,60 @@
       const m = ultimosDados[id];
       if (!m || !m.lat || !m.lng || !marcadores[id]) return;
 
-      map.setView([m.lat, m.lng], 17);
+      map.setView([Number(m.lat), Number(m.lng)], 17);
       marcadores[id].openPopup();
+    }
+
+    function centralizarLoja() {
+      map.setView([LOJA.lat, LOJA.lng], 16);
+      marcadorLoja.openPopup();
     }
 
     function centralizarTodos() {
       const pontos = Object.keys(ultimosDados || {})
         .map(id => ultimosDados[id])
         .filter(m => m && m.lat && m.lng)
-        .map(m => [m.lat, m.lng]);
+        .map(m => [Number(m.lat), Number(m.lng)]);
+
+      pontos.push([LOJA.lat, LOJA.lng]);
 
       if (!pontos.length) return;
 
       if (pontos.length === 1) {
         map.setView(pontos[0], 16);
       } else {
-        map.fitBounds(pontos, { padding: [40, 40] });
+        map.fitBounds(pontos, { padding: [45, 45] });
+      }
+    }
+
+    async function excluirMotoboy(id, nome) {
+      const confirmar = confirm(
+        `Excluir o motoboy "${nome}" do mapa?\n\n` +
+        "Isso remove o registro dele do Firebase. Se ele abrir o rastreamento novamente, ele aparecerá de novo."
+      );
+
+      if (!confirmar) return;
+
+      try {
+        const resp = await fetch(`${FIREBASE_URL}/motoboys/${id}.json`, {
+          method: "DELETE"
+        });
+
+        if (!resp.ok) {
+          throw new Error(`Firebase respondeu com status ${resp.status}`);
+        }
+
+        if (marcadores[id]) {
+          map.removeLayer(marcadores[id]);
+          delete marcadores[id];
+        }
+
+        delete ultimosDados[id];
+        atualizarListaLateral(ultimosDados);
+        carregarMotoboys();
+
+      } catch (e) {
+        alert("Erro ao excluir motoboy: " + e.message);
       }
     }
 
