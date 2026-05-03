@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa Motoboys - Dimensões Burguer</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --bg: #07110b;
+      --card: #111827;
+      --card2: #0f172a;
+      --border: #263244;
+      --green: #22c55e;
+      --red: #ef4444;
+      --muted: #d1d5db;
+      --text: #f9fafb;
+      --purple: #7e22ce;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .topo {
+      min-height: 70px;
+      padding: 12px 18px;
+      background:
+        radial-gradient(circle at left, rgba(34, 197, 94, 0.18), transparent 38%),
+        radial-gradient(circle at right, rgba(126, 34, 206, 0.16), transparent 38%),
+        var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .topo h1 {
+      margin: 0;
+      font-size: 21px;
+      color: var(--green);
+      letter-spacing: 0.4px;
+    }
+
+    .topo span {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .acoes {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 13px;
+      background: #15803d;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.secundario {
+      background: #374151;
+    }
+
+    #map {
+      height: calc(100vh - 70px);
+      width: 100%;
+      background: #0f172a;
+    }
+
+    .online {
+      color: #22c55e;
+      font-weight: bold;
+    }
+
+    .offline {
+      color: #f87171;
+      font-weight: bold;
+    }
+
+    .popup {
+      font-family: Arial, sans-serif;
+      line-height: 1.45;
+    }
+
+    .popup b {
+      font-size: 15px;
+    }
+
+    .painel {
+      position: absolute;
+      z-index: 999;
+      left: 12px;
+      bottom: 18px;
+      width: 310px;
+      max-width: calc(100vw - 24px);
+      max-height: 42vh;
+      overflow: auto;
+      background: rgba(17, 24, 39, 0.94);
+      color: white;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .painel h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      color: var(--green);
+    }
+
+    .motoboy-card {
+      padding: 10px;
+      border-radius: 12px;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+
+    .motoboy-card:hover {
+      border-color: rgba(34, 197, 94, 0.6);
+    }
+
+    .motoboy-card strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .motoboy-card small {
+      color: var(--muted);
+      line-height: 1.35;
+      display: block;
+    }
+
+    .vazio {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 700px) {
+      body {
+        overflow: auto;
+      }
+
+      .topo {
+        min-height: auto;
+      }
+
+      #map {
+        height: calc(100vh - 112px);
+      }
+
+      .painel {
+        left: 8px;
+        right: 8px;
+        bottom: 12px;
+        width: auto;
+        max-height: 34vh;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topo">
+    <div>
+      <h1>🛵 Mapa dos Motoboys</h1>
+      <span id="status">Atualizando...</span>
+    </div>
+
+    <div class="acoes">
+      <button onclick="centralizarTodos()">Centralizar todos</button>
+      <button class="secundario" onclick="carregarMotoboys()">Atualizar agora</button>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="painel">
+    <h2>Motoboys</h2>
+    <div id="listaMotoboys" class="vazio">Nenhum motoboy carregado ainda.</div>
+  </div>
+
+  <script>
+    const FIREBASE_URL = "https://dimensoesburguer-85c0f-default-rtdb.firebaseio.com";
+
+    // Centro aproximado de Goiânia/Aparecida. Ajuste se quiser.
+    const map = L.map("map").setView([-16.6869, -49.2648], 13);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(map);
+
+    const marcadores = {};
+    let ultimosDados = {};
+
+    const iconeOnline = L.divIcon({
+      className: "",
+      html: `<div style="
+        width: 24px;
+        height: 24px;
+        background: #22c55e;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 0 16px rgba(34,197,94,.8);
+      "></div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+
+    const iconeOffline = L.divIcon({
+      className: "",
+      html: `<div style="
+        width: 22px;
+        height: 22px;
+        background: #ef4444;
+        border: 3px solid white;
+        border-radius: 50%;
+        opacity: .75;
+        box-shadow: 0 0 12px rgba(239,68,68,.45);
+      "></div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
+    });
+
+    function tempoTexto(timestamp) {
+      if (!timestamp) return "sem data";
+
+      const segundos = Math.floor((Date.now() - timestamp) / 1000);
+
+      if (segundos < 10) return "agora";
+      if (segundos < 60) return `${segundos}s atrás`;
+
+      const minutos = Math.floor(segundos / 60);
+      if (minutos < 60) return `${minutos}min atrás`;
+
+      const horas = Math.floor(minutos / 60);
+      if (horas < 24) return `${horas}h atrás`;
+
+      const dias = Math.floor(horas / 24);
+      return `${dias} dia(s) atrás`;
+    }
+
+    function estaOnline(motoboy) {
+      if (!motoboy || !motoboy.ultima_atualizacao) return false;
+
+      const diferenca = Date.now() - motoboy.ultima_atualizacao;
+
+      // Considera online se atualizou nos últimos 60 segundos e não clicou em PARAR.
+      return motoboy.ativo === true && diferenca <= 60000;
+    }
+
+    function criarPopup(id, m, online) {
+      const mapsUrl = `https://www.google.com/maps?q=${m.lat},${m.lng}`;
+      return `
+        <div class="popup">
+          <b>${m.nome || id}</b><br>
+          Status: <span class="${online ? "online" : "offline"}">${online ? "ONLINE" : "OFFLINE"}</span><br>
+          Última atualização: ${tempoTexto(m.ultima_atualizacao)}<br>
+          Precisão: ${m.precisao ? Math.round(m.precisao) + "m" : "não informado"}<br>
+          <a href="${mapsUrl}" target="_blank">Abrir no Google Maps</a>
+        </div>
+      `;
+    }
+
+    function atualizarListaLateral(dados) {
+      const lista = document.getElementById("listaMotoboys");
+
+      const itens = Object.keys(dados || {})
+        .map(id => ({ id, ...dados[id] }))
+        .filter(m => m.lat && m.lng)
+        .sort((a, b) => {
+          const onlineA = estaOnline(a) ? 1 : 0;
+          const onlineB = estaOnline(b) ? 1 : 0;
+          if (onlineA !== onlineB) return onlineB - onlineA;
+          return (b.ultima_atualizacao || 0) - (a.ultima_atualizacao || 0);
+        });
+
+      if (!itens.length) {
+        lista.className = "vazio";
+        lista.innerHTML = "Nenhum motoboy encontrado. Abra o arquivo motoboy.html no celular e inicie o rastreamento.";
+        return;
+      }
+
+      lista.className = "";
+
+      lista.innerHTML = itens.map(m => {
+        const online = estaOnline(m);
+        return `
+          <div class="motoboy-card" onclick="focarMotoboy('${m.id}')">
+            <strong>${m.nome || m.id}</strong>
+            <small>Status: <span class="${online ? "online" : "offline"}">${online ? "ONLINE" : "OFFLINE"}</span></small>
+            <small>Atualizou: ${tempoTexto(m.ultima_atualizacao)}</small>
+            <small>Precisão: ${m.precisao ? Math.round(m.precisao) + "m" : "não informado"}</small>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function carregarMotoboys() {
+      try {
+        const resp = await fetch(`${FIREBASE_URL}/motoboys.json?t=${Date.now()}`);
+
+        if (!resp.ok) {
+          throw new Error(`Firebase respondeu com status ${resp.status}`);
+        }
+
+        const dados = await resp.json();
+        ultimosDados = dados || {};
+
+        let totalOnline = 0;
+        let totalComLocalizacao = 0;
+        const bounds = [];
+
+        if (!dados) {
+          document.getElementById("status").innerText = "Nenhum motoboy encontrado.";
+          atualizarListaLateral({});
+          return;
+        }
+
+        Object.keys(dados).forEach(id => {
+          const m = dados[id];
+
+          if (!m.lat || !m.lng) return;
+
+          totalComLocalizacao++;
+
+          const online = estaOnline(m);
+          if (online) totalOnline++;
+
+          const latlng = [m.lat, m.lng];
+          bounds.push(latlng);
+
+          const popup = criarPopup(id, m, online);
+          const icone = online ? iconeOnline : iconeOffline;
+
+          if (!marcadores[id]) {
+            marcadores[id] = L.marker(latlng, { icon: icone }).addTo(map);
+          } else {
+            marcadores[id].setLatLng(latlng);
+            marcadores[id].setIcon(icone);
+          }
+
+          marcadores[id].bindPopup(popup);
+        });
+
+        atualizarListaLateral(dados);
+
+        document.getElementById("status").innerText =
+          `${totalOnline} online / ${totalComLocalizacao} com localização — atualizado ${new Date().toLocaleTimeString("pt-BR")}`;
+
+      } catch (e) {
+        document.getElementById("status").innerText = "Erro ao carregar motoboys: " + e.message;
+      }
+    }
+
+    function focarMotoboy(id) {
+      const m = ultimosDados[id];
+      if (!m || !m.lat || !m.lng || !marcadores[id]) return;
+
+      map.setView([m.lat, m.lng], 17);
+      marcadores[id].openPopup();
+    }
+
+    function centralizarTodos() {
+      const pontos = Object.keys(ultimosDados || {})
+        .map(id => ultimosDados[id])
+        .filter(m => m && m.lat && m.lng)
+        .map(m => [m.lat, m.lng]);
+
+      if (!pontos.length) return;
+
+      if (pontos.length === 1) {
+        map.setView(pontos[0], 16);
+      } else {
+        map.fitBounds(pontos, { padding: [40, 40] });
+      }
+    }
+
+    carregarMotoboys();
+    setInterval(carregarMotoboys, 3000);
+  </script>
+
+</body>
+</html>
