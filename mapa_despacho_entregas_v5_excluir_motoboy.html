@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Despacho de Entregas - Dimensões Burguer V5</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+:root{
+  --bg:#07110b;--card:#111827;--card2:#0f172a;--border:#263244;
+  --green:#22c55e;--red:#ef4444;--yellow:#facc15;--blue:#38bdf8;
+  --muted:#d1d5db;--text:#f9fafb;--purple:#7e22ce
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+.topo{
+  min-height:76px;padding:12px 18px;background:
+  radial-gradient(circle at left,rgba(34,197,94,.18),transparent 38%),
+  radial-gradient(circle at right,rgba(126,34,206,.16),transparent 38%),var(--card);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap
+}
+.topo h1{margin:0;font-size:21px;color:var(--green);letter-spacing:.4px}
+.topo span{font-size:14px;color:var(--muted)}
+.acoes{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+button{border:0;border-radius:10px;padding:10px 13px;background:#15803d;color:white;font-weight:bold;cursor:pointer;font-size:13px}
+button.secundario{background:#374151} button.perigo{background:#b91c1c} button.azul{background:#0369a1} button.roxo{background:#7e22ce} button.amarelo{background:#ca8a04}
+#map{height:calc(100vh - 76px);width:100%;background:#0f172a}
+.online{color:#22c55e;font-weight:bold}.atrasado{color:#facc15;font-weight:bold}.offline{color:#f87171;font-weight:bold}
+.loja{color:#facc15;font-weight:bold}.pendente{color:#facc15;font-weight:bold}.aguardando_aceite{color:#facc15;font-weight:bold}.atribuida{color:#38bdf8;font-weight:bold}.aceita{color:#22c55e;font-weight:bold}.saiu{color:#a78bfa;font-weight:bold}.cliente{color:#fb923c;font-weight:bold}.entregue{color:#22c55e;font-weight:bold}
+.popup{font-family:Arial,sans-serif;line-height:1.45;min-width:240px}.popup b{font-size:15px}.popup button{margin-top:7px;width:100%;padding:8px}
+.painel{
+  position:absolute;z-index:999;right:12px;top:92px;width:430px;max-width:calc(100vw - 24px);
+  max-height:calc(100vh - 110px);overflow:auto;background:rgba(17,24,39,.96);color:white;
+  border:1px solid var(--border);border-radius:16px;padding:12px;box-shadow:0 0 24px rgba(0,0,0,.35)
+}
+.painel h2{margin:0 0 8px;font-size:16px;color:var(--green)}
+.bloco{border:1px solid var(--border);border-radius:14px;padding:10px;background:var(--card2);margin-bottom:10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:bold}
+input,select,textarea{width:100%;border:1px solid var(--border);background:#020617;color:white;border-radius:8px;padding:9px;font-size:13px;outline:none}
+textarea{resize:vertical;min-height:48px} input:focus,select:focus,textarea:focus{border-color:var(--green)}
+.corrida-card,.motoboy-card{padding:10px;border-radius:12px;background:#020617;border:1px solid var(--border);margin-bottom:8px}
+.corrida-card strong,.motoboy-card strong{display:block;margin-bottom:4px}
+.corrida-card small,.motoboy-card small{color:var(--muted);line-height:1.35;display:block}
+.linha-botoes{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.linha-botoes button{flex:1;padding:8px 6px;font-size:12px;min-width:88px}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}.tabs button{flex:1;background:#374151;padding:8px;min-width:86px}.tabs button.active{background:#15803d}
+.hidden{display:none}.vazio{color:var(--muted);font-size:14px;line-height:1.4}
+.badge{display:inline-block;padding:2px 6px;border-radius:999px;background:#1f2937;border:1px solid var(--border);font-size:11px;margin-left:4px;color:#d1d5db}
+@media(max-width:800px){body{overflow:auto}.topo{min-height:auto}#map{height:55vh}.painel{position:static;width:auto;max-width:none;max-height:none;margin:10px}}
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <h1>🍔 Despacho de Entregas</h1>
+    <span id="status">Atualizando...</span>
+  </div>
+  <div class="acoes">
+    <button onclick="centralizarLoja()">Ver loja</button>
+    <button onclick="centralizarTodos()">Centralizar todos</button>
+    <button class="secundario" onclick="carregarTudo()">Atualizar agora</button>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<div class="painel">
+  <div class="tabs">
+    <button id="tabCorridas" class="active" onclick="mostrarAba('corridas')">Entregas</button>
+    <button id="tabHistorico" onclick="mostrarAba('historico')">Histórico</button>
+    <button id="tabCriar" onclick="mostrarAba('criar')">Manual</button>
+    <button id="tabMotoboys" onclick="mostrarAba('motoboys')">Motoboys</button>
+  </div>
+
+  <div id="abaCorridas">
+    <h2>Entregas abertas</h2><div class="vazio" style="margin-bottom:8px">Ao atribuir, a entrega fica aguardando o motoboy aceitar no app.</div>
+    <div id="listaCorridas" class="vazio">Nenhuma entrega carregada.</div>
+  </div>
+
+  <div id="abaHistorico" class="hidden">
+    <h2>Últimas entregas</h2>
+    <div id="listaHistorico" class="vazio">Nenhum histórico carregado.</div>
+  </div>
+
+  <div id="abaCriar" class="hidden">
+    <h2>Nova entrega manual</h2>
+    <div class="bloco">
+      <div class="grid">
+        <div><label>Pedido/Comanda</label><input id="pedidoId" placeholder="Ex: 123"></div>
+        <div><label>Tipo</label><select id="tipoPedido"><option>DELIVERY</option><option>DELIVERY WEB</option><option>IFOOD</option><option>99 FOOD</option></select></div>
+      </div>
+      <label style="margin-top:8px">Cliente</label><input id="cliente" placeholder="Nome do cliente">
+      <label style="margin-top:8px">Telefone</label><input id="telefone" placeholder="WhatsApp">
+      <label style="margin-top:8px">Endereço</label><textarea id="endereco" placeholder="Rua, número, bairro, referência"></textarea>
+      <div class="grid" style="margin-top:8px">
+        <div><label>Total</label><input id="total" placeholder="Ex: 54,99"></div>
+        <div><label>Motoboy</label><select id="motoboySelect"><option value="">Sem atribuir</option></select></div>
+      </div>
+      <label style="margin-top:8px">Colar localização do cliente</label>
+      <textarea id="localizacaoColada" placeholder="-16.650294,-49.1533275 ou link do Google Maps/WhatsApp/iFood"></textarea>
+      <div class="grid" style="margin-top:8px">
+        <div><label>Latitude</label><input id="latCliente" placeholder="-16.650294"></div>
+        <div><label>Longitude</label><input id="lngCliente" placeholder="-49.1533275"></div>
+      </div>
+      <div class="linha-botoes">
+        <button class="azul" onclick="extrairCoordenadas()">Extrair</button>
+        <button onclick="criarCorrida()">Criar entrega</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="abaMotoboys" class="hidden">
+    <h2>Motoboys</h2>
+    <div class="vazio" style="margin-bottom:8px">Use Excluir para remover motoboys que não trabalham mais na loja. Se ele abrir o app novamente, ele pode reaparecer.</div>
+    <div id="listaMotoboys" class="vazio">Nenhum motoboy carregado.</div>
+  </div>
+</div>
+
+<script>
+const FIREBASE_URL="https://dimensoesburguer-85c0f-default-rtdb.firebaseio.com";
+const LOJA={nome:"Dimensões Burguer",lat:-16.650294,lng:-49.1533275};
+
+const map=L.map("map").setView([LOJA.lat,LOJA.lng],14);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+
+let motoboys={},corridas={};
+const marcadoresMotoboys={},marcadoresCorridas={};
+
+const iconLoja=L.divIcon({className:"",html:`<div style="width:34px;height:34px;background:#facc15;border:3px solid #111827;border-radius:50%;box-shadow:0 0 20px rgba(250,204,21,.8);display:flex;align-items:center;justify-content:center;font-size:18px">🍔</div>`,iconSize:[34,34],iconAnchor:[17,17]});
+const iconMotoboyOnline=L.divIcon({className:"",html:`<div style="width:24px;height:24px;background:#22c55e;border:3px solid white;border-radius:50%;box-shadow:0 0 16px rgba(34,197,94,.8)"></div>`,iconSize:[24,24],iconAnchor:[12,12]});
+const iconMotoboyAtrasado=L.divIcon({className:"",html:`<div style="width:24px;height:24px;background:#facc15;border:3px solid white;border-radius:50%;box-shadow:0 0 16px rgba(250,204,21,.7)"></div>`,iconSize:[24,24],iconAnchor:[12,12]});
+const iconMotoboyOffline=L.divIcon({className:"",html:`<div style="width:22px;height:22px;background:#ef4444;border:3px solid white;border-radius:50%;opacity:.75;box-shadow:0 0 12px rgba(239,68,68,.45)"></div>`,iconSize:[22,22],iconAnchor:[11,11]});
+const iconCorridaPendente=L.divIcon({className:"",html:`<div style="width:30px;height:30px;background:#facc15;border:3px solid #111827;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 18px rgba(250,204,21,.7)">📍</div>`,iconSize:[30,30],iconAnchor:[15,15]});
+const iconCorridaAtribuida=L.divIcon({className:"",html:`<div style="width:30px;height:30px;background:#38bdf8;border:3px solid #111827;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 18px rgba(56,189,248,.7)">📦</div>`,iconSize:[30,30],iconAnchor:[15,15]});
+
+const marcadorLoja=L.marker([LOJA.lat,LOJA.lng],{icon:iconLoja}).addTo(map).bindPopup(`<div class="popup"><b>${LOJA.nome}</b><br><span class="loja">LOJA</span><br><a href="https://www.google.com/maps?q=${LOJA.lat},${LOJA.lng}" target="_blank">Abrir Google Maps</a></div>`);
+L.circle([LOJA.lat,LOJA.lng],{radius:250,color:"#facc15",fillColor:"#facc15",fillOpacity:.08,weight:2}).addTo(map);
+
+function mostrarAba(aba){
+  const mapa={corridas:"Corridas",historico:"Historico",criar:"Criar",motoboys:"Motoboys"};
+  Object.keys(mapa).forEach(k=>{
+    document.getElementById("aba"+mapa[k]).classList.toggle("hidden",aba!==k);
+    document.getElementById("tab"+mapa[k]).classList.toggle("active",aba===k);
+  });
+}
+function normalizar(txt){return String(txt||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"")}
+function tempoTexto(ts){if(!ts)return"sem data";const s=Math.floor((Date.now()-ts)/1000);if(s<10)return"agora";if(s<60)return`${s}s atrás`;const m=Math.floor(s/60);if(m<60)return`${m}min atrás`;const h=Math.floor(m/60);if(h<24)return`${h}h atrás`;return`${Math.floor(h/24)} dia(s) atrás`}
+function dataTexto(ts){if(!ts)return"-";return new Date(ts).toLocaleString("pt-BR")}
+function statusMotoboy(m){if(!m||!m.ultima_atualizacao||!m.ativo)return"offline";const d=Date.now()-m.ultima_atualizacao;if(d<=30000)return"online";if(d<=120000)return"atrasado";return"offline"}
+function iconMotoboy(st){return st==="online"?iconMotoboyOnline:st==="atrasado"?iconMotoboyAtrasado:iconMotoboyOffline}
+function distanciaKm(a,b,c,d){const R=6371,dl=(c-a)*Math.PI/180,dg=(d-b)*Math.PI/180,x=Math.sin(dl/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dg/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))}
+function distanciaTexto(km){if(!isFinite(km))return"não calculada";return km<1?`${Math.round(km*1000)} m`:`${km.toFixed(2).replace(".",",")} km`}
+function linkGoogle(lat,lng){return`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`}
+function linkWaze(lat,lng){return`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`}
+function statusCorridaHtml(s){
+  s=String(s||"pendente").toLowerCase();
+  const cls=s==="aguardando_aceite"?"aguardando_aceite":s==="aceita"?"aceita":s==="saiu"?"saiu":s==="cliente"?"cliente":s==="entregue"?"entregue":s==="atribuida"?"atribuida":"pendente";
+  const txt={pendente:"PENDENTE",aguardando_aceite:"AGUARDANDO ACEITE",atribuida:"ATRIBUÍDA",aceita:"ACEITA",saiu:"SAIU",cliente:"NO CLIENTE",entregue:"ENTREGUE"}[s]||s.toUpperCase();
+  return`<span class="${cls}">${txt}</span>`;
+}
+
+async function fb(path,method="GET",body=null){
+  const opt={method,headers:{"Content-Type":"application/json"}};
+  if(body!==null)opt.body=JSON.stringify(body);
+  const r=await fetch(`${FIREBASE_URL}${path}.json${method==="GET"?"?t="+Date.now():""}`,opt);
+  if(!r.ok)throw new Error("Firebase "+r.status);
+  return await r.json();
+}
+async function carregarTudo(){
+  try{
+    const [m,c]=await Promise.all([fb("/motoboys"),fb("/corridas")]);
+    motoboys=m||{};corridas=c||{};
+    atualizarSelectMotoboys();atualizarMapaMotoboys();atualizarMapaCorridas();atualizarListaMotoboys();atualizarListaCorridas();atualizarHistorico();
+    const online=Object.values(motoboys).filter(x=>statusMotoboy(x)==="online").length;
+    const abertas=Object.values(corridas).filter(x=>String(x.status||"pendente").toLowerCase()!=="entregue").length;
+    document.getElementById("status").innerText=`${online} motoboy(s) online | ${abertas} entrega(s) aberta(s) — ${new Date().toLocaleTimeString("pt-BR")}`;
+  }catch(e){document.getElementById("status").innerText="Erro: "+e.message}
+}
+function atualizarSelectMotoboys(){
+  const sel=document.getElementById("motoboySelect"),v=sel.value;
+  const arr=Object.keys(motoboys).sort();
+  sel.innerHTML='<option value="">Sem atribuir</option>'+arr.map(id=>`<option value="${id}">${motoboys[id].nome||id} (${statusMotoboy(motoboys[id])})</option>`).join("");
+  sel.value=v;
+}
+function corridaLat(c){return Number(c.lat_cliente ?? c.latitude ?? c.cliente_latitude)}
+function corridaLng(c){return Number(c.lng_cliente ?? c.longitude ?? c.cliente_longitude)}
+function valorTotalTxt(c){return c.total?("R$ "+String(c.total).replace(".",",")):"-"}
+function atualizarMapaMotoboys(){
+  Object.keys(motoboys).forEach(id=>{
+    const m=motoboys[id];if(!m.lat||!m.lng)return;
+    const st=statusMotoboy(m),latlng=[Number(m.lat),Number(m.lng)],dist=distanciaKm(LOJA.lat,LOJA.lng,Number(m.lat),Number(m.lng));
+    const pop=`<div class="popup"><b>🛵 ${m.nome||id}</b><br>ID: ${id}<br>Status: <span class="${st}">${st.toUpperCase()}</span><br>Distância da loja: <b>${distanciaTexto(dist)}</b><br>Atualizou: ${tempoTexto(m.ultima_atualizacao)}<br>Origem: ${m.origem||"-"}<button onclick="focarMotoboy('${id}')">Ver</button></div>`;
+    if(!marcadoresMotoboys[id])marcadoresMotoboys[id]=L.marker(latlng,{icon:iconMotoboy(st)}).addTo(map);else{marcadoresMotoboys[id].setLatLng(latlng);marcadoresMotoboys[id].setIcon(iconMotoboy(st))}
+    marcadoresMotoboys[id].bindPopup(pop);
+  });
+  Object.keys(marcadoresMotoboys).forEach(id=>{if(!motoboys[id]){map.removeLayer(marcadoresMotoboys[id]);delete marcadoresMotoboys[id]}});
+}
+function atualizarMapaCorridas(){
+  Object.keys(corridas).forEach(id=>{
+    const c=corridas[id],lat=corridaLat(c),lng=corridaLng(c);
+    if(!isFinite(lat)||!isFinite(lng))return;
+    if(String(c.status||"pendente").toLowerCase()==="entregue"){if(marcadoresCorridas[id]){map.removeLayer(marcadoresCorridas[id]);delete marcadoresCorridas[id]}return}
+    const icon=c.motoboy_id?iconCorridaAtribuida:iconCorridaPendente,dist=distanciaKm(LOJA.lat,LOJA.lng,lat,lng);
+    const pop=`<div class="popup">
+      <b>📦 Pedido ${c.pedido_id||id}</b> <span class="badge">${c.origem||"manual"}</span><br>
+      Cliente: <b>${c.cliente||c.nome||"-"}</b><br>Telefone: ${c.telefone||"-"}<br>Tipo: ${c.tipo||"-"}<br>Total: ${valorTotalTxt(c)}<br>
+      Endereço: ${c.endereco||"-"}<br>Status: ${statusCorridaHtml(c.status)}<br>Motoboy: ${c.motoboy_nome||c.motoboy_id||"Não atribuído"}<br>ID motoboy: ${c.motoboy_id||"-"}<br>Distância da loja: <b>${distanciaTexto(dist)}</b><br>
+      <button onclick="window.open('${linkGoogle(lat,lng)}','_blank')">Google Maps</button>
+      <button class="roxo" onclick="window.open('${linkWaze(lat,lng)}','_blank')">Waze</button>
+      <button class="azul" onclick="abrirAtribuicao('${id}')">${c.motoboy_id?"Reatribuir / trocar motoboy":"Atribuir motoboy"}</button>
+      <button class="amarelo" onclick="marcarStatus('${id}','pendente')">Voltar pendente</button>
+      <button onclick="marcarStatus('${id}','entregue')">Marcar entregue</button>
+      <button class="perigo" onclick="excluirCorrida('${id}')">Excluir</button>
+    </div>`;
+    if(!marcadoresCorridas[id])marcadoresCorridas[id]=L.marker([lat,lng],{icon}).addTo(map);else{marcadoresCorridas[id].setLatLng([lat,lng]);marcadoresCorridas[id].setIcon(icon)}
+    marcadoresCorridas[id].bindPopup(pop);
+  });
+  Object.keys(marcadoresCorridas).forEach(id=>{if(!corridas[id]){map.removeLayer(marcadoresCorridas[id]);delete marcadoresCorridas[id]}});
+}
+function cardCorrida(c, historico=false){
+  const lat=corridaLat(c),lng=corridaLng(c),dist=distanciaKm(LOJA.lat,LOJA.lng,lat,lng);
+  return `<div class="corrida-card">
+    <strong>📦 Pedido ${c.pedido_id||c.id} <span class="badge">${c.origem||"manual"}</span></strong>
+    <small>Cliente: ${c.cliente||c.nome||"-"} | Tel: ${c.telefone||"-"}</small>
+    <small>Status: ${statusCorridaHtml(c.status)} | Motoboy: ${c.motoboy_nome||c.motoboy_id||"Não atribuído"}</small>
+    <small>ID motoboy: ${c.motoboy_id||"-"} | Total: ${valorTotalTxt(c)}</small>
+    <small>Distância da loja: ${distanciaTexto(dist)}</small>
+    <small>Atualizado: ${dataTexto(c.atualizado_em||c.criado_em)}</small>
+    <small>Endereço: ${c.endereco||"-"}</small>
+    <div class="linha-botoes">
+      ${historico?`<button class="amarelo" onclick="reabrirCorrida('${c.id}')">Reabrir</button>`:`<button onclick="focarCorrida('${c.id}')">Ver</button>`}
+      <button class="azul" onclick="abrirAtribuicao('${c.id}')">${c.motoboy_id?"Reatribuir":"Atribuir"}</button>
+      <button onclick="window.open('${linkGoogle(lat,lng)}','_blank')">Maps</button>
+      <button class="roxo" onclick="window.open('${linkWaze(lat,lng)}','_blank')">Waze</button>
+      ${historico?"":`<button onclick="marcarStatus('${c.id}','entregue')">Entregue</button>`}
+      <button class="perigo" onclick="excluirCorrida('${c.id}')">Excluir</button>
+    </div>
+  </div>`;
+}
+function atualizarListaCorridas(){
+  const el=document.getElementById("listaCorridas");
+  const arr=Object.keys(corridas).map(id=>({id,...corridas[id]})).filter(c=>String(c.status||"pendente").toLowerCase()!=="entregue").sort((a,b)=>(b.criado_em||b.atualizado_em||0)-(a.criado_em||a.atualizado_em||0));
+  if(!arr.length){el.className="vazio";el.innerHTML="Nenhuma entrega aberta.";return}
+  el.className="";el.innerHTML=arr.map(c=>cardCorrida(c,false)).join("");
+}
+function atualizarHistorico(){
+  const el=document.getElementById("listaHistorico");
+  const arr=Object.keys(corridas).map(id=>({id,...corridas[id]})).sort((a,b)=>(b.atualizado_em||b.criado_em||0)-(a.atualizado_em||a.criado_em||0)).slice(0,30);
+  if(!arr.length){el.className="vazio";el.innerHTML="Nenhuma entrega encontrada.";return}
+  el.className="";el.innerHTML=arr.map(c=>cardCorrida(c,true)).join("");
+}
+function atualizarListaMotoboys(){
+  const el=document.getElementById("listaMotoboys");
+  const arr=Object.keys(motoboys).map(id=>({id,...motoboys[id]})).filter(m=>m.lat&&m.lng).sort((a,b)=>(b.ultima_atualizacao||0)-(a.ultima_atualizacao||0));
+  if(!arr.length){el.className="vazio";el.innerHTML="Nenhum motoboy com localização.";return}
+  el.className="";el.innerHTML=arr.map(m=>{const st=statusMotoboy(m);return`<div class="motoboy-card"><strong>${m.nome||m.id}</strong><small>ID: ${m.id}</small><small>Status: <span class="${st}">${st.toUpperCase()}</span></small><small>Atualizou: ${tempoTexto(m.ultima_atualizacao)}</small><small>Origem: ${m.origem||"-"}</small><div class="linha-botoes"><button onclick="focarMotoboy('${m.id}')">Ver</button><button class="perigo" onclick="excluirMotoboy('${m.id}')">Excluir</button></div></div>`}).join("");
+}
+function extrairCoordenadas(){
+  const texto=document.getElementById("localizacaoColada").value.trim();
+  if(!texto)return alert("Cole a localização primeiro.");
+  const m=texto.match(/(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/);
+  if(!m)return alert("Não consegui encontrar latitude/longitude. Use: -16.650294,-49.1533275");
+  document.getElementById("latCliente").value=m[1];document.getElementById("lngCliente").value=m[2];alert("Coordenadas extraídas.");
+}
+function idManual(){const p=document.getElementById("pedidoId").value.trim();return p?("manual_"+p.replace(/[^a-zA-Z0-9_-]/g,"_")):"manual_"+Date.now()}
+async function criarCorrida(){
+  const id=idManual(),lat=parseFloat(document.getElementById("latCliente").value.replace(",",".")),lng=parseFloat(document.getElementById("lngCliente").value.replace(",","."));
+  if(!isFinite(lat)||!isFinite(lng))return alert("Latitude/longitude inválidas.");
+  const motoboyId=document.getElementById("motoboySelect").value;
+  const c={
+    id,pedido_id:document.getElementById("pedidoId").value.trim()||id,tipo:document.getElementById("tipoPedido").value,
+    cliente:document.getElementById("cliente").value.trim(),telefone:document.getElementById("telefone").value.trim(),
+    endereco:document.getElementById("endereco").value.trim(),total:document.getElementById("total").value.trim(),
+    lat_cliente:lat,lng_cliente:lng,latitude:lat,longitude:lng,
+    gps_url:`https://www.google.com/maps?q=${lat},${lng}`,maps_url:linkGoogle(lat,lng),waze_url:linkWaze(lat,lng),
+    motoboy_id:motoboyId,motoboy_nome:motoboyId&&motoboys[motoboyId]?(motoboys[motoboyId].nome||motoboyId):"",
+    motoboy_nome_normalizado:motoboyId&&motoboys[motoboyId]?normalizar(motoboys[motoboyId].nome||motoboyId):"",
+    status:motoboyId?"aguardando_aceite":"pendente",origem:"manual_mapa",criado_em:Date.now(),atualizado_em:Date.now()
+  };
+  if(!c.cliente)return alert("Informe o cliente.");
+  await fb("/corridas/"+id,"PUT",c);alert("Entrega criada.");mostrarAba("corridas");carregarTudo();
+}
+
+function acharMotoboyPorEntrada(entrada){
+  entrada=String(entrada||"").trim();
+  if(!entrada) return null;
+  const ids=Object.keys(motoboys);
+  if(motoboys[entrada]) return entrada;
+  const n=Number(entrada);
+  if(Number.isInteger(n) && n>=1 && n<=ids.length) return ids[n-1];
+  const norm=normalizar(entrada);
+  for(const id of ids){
+    const m=motoboys[id]||{};
+    if(normalizar(id)===norm) return id;
+    if(normalizar(m.nome||"")===norm) return id;
+  }
+  return null;
+}
+
+async function abrirAtribuicao(corridaId){
+  const ids=Object.keys(motoboys);if(!ids.length)return alert("Nenhum motoboy no Firebase.");
+  const txt=ids.map((id,i)=>`${i+1}. ${motoboys[id].nome||id} | ID: ${id} | ${statusMotoboy(motoboys[id])}`).join("\n");
+  const e=prompt("Digite o NÚMERO da lista ou o ID exato do motoboy:\n\n"+txt+"\n\nExemplo: 1 ou guilherme");
+  if(!e)return;
+  const id=acharMotoboyPorEntrada(e);
+  if(!id)return alert("Não encontrei esse motoboy. Confira o ID na aba Motoboys.");
+  const m=motoboys[id]||{};
+  await fb("/corridas/"+corridaId,"PATCH",{
+    motoboy_id:id,
+    motoboy_nome:m.nome||id,
+    motoboy_nome_normalizado:normalizar(m.nome||id),
+    status:"aguardando_aceite",
+    aceito_em:null,
+    reatribuido_em:Date.now(),
+    atualizado_em:Date.now()
+  });
+  alert("Entrega enviada para aceite de "+(m.nome||id)+" | ID: "+id);
+  carregarTudo();
+}
+
+async function marcarStatus(id,status){await fb("/corridas/"+id,"PATCH",{status,atualizado_em:Date.now()});carregarTudo()}
+async function reabrirCorrida(id){await fb("/corridas/"+id,"PATCH",{status:"pendente",atualizado_em:Date.now()});mostrarAba("corridas");carregarTudo()}
+async function excluirCorrida(id){if(!confirm("Excluir entrega?"))return;await fb("/corridas/"+id,"DELETE");if(marcadoresCorridas[id]){map.removeLayer(marcadoresCorridas[id]);delete marcadoresCorridas[id]}carregarTudo()}
+function focarMotoboy(id){const m=motoboys[id];if(!m||!m.lat||!m.lng)return;map.setView([Number(m.lat),Number(m.lng)],17);marcadoresMotoboys[id]?.openPopup()}
+function focarCorrida(id){const c=corridas[id],lat=corridaLat(c),lng=corridaLng(c);if(!isFinite(lat)||!isFinite(lng))return;map.setView([lat,lng],17);marcadoresCorridas[id]?.openPopup()}
+
+async function excluirMotoboy(id){
+  const m = motoboys[id] || {};
+  const nome = m.nome || id;
+
+  const confirmar = confirm(
+    "Excluir este motoboy do mapa?\n\n" +
+    "Nome: " + nome + "\n" +
+    "ID: " + id + "\n\n" +
+    "Isso remove o motoboy de /motoboys no Firebase. " +
+    "Se ele abrir o app e iniciar rastreamento de novo, ele pode aparecer novamente."
+  );
+
+  if(!confirmar) return;
+
+  try{
+    await fb("/motoboys/" + id, "DELETE");
+
+    if(marcadoresMotoboys[id]){
+      map.removeLayer(marcadoresMotoboys[id]);
+      delete marcadoresMotoboys[id];
+    }
+
+    delete motoboys[id];
+    atualizarSelectMotoboys();
+    atualizarListaMotoboys();
+    atualizarMapaMotoboys();
+    alert("Motoboy excluído do mapa.");
+    carregarTudo();
+  }catch(e){
+    alert("Erro ao excluir motoboy: " + e.message);
+  }
+}
+
+function centralizarLoja(){map.setView([LOJA.lat,LOJA.lng],16);marcadorLoja.openPopup()}
+function centralizarTodos(){
+  const pts=[[LOJA.lat,LOJA.lng]];
+  Object.values(motoboys).forEach(m=>{if(m.lat&&m.lng)pts.push([Number(m.lat),Number(m.lng)])});
+  Object.values(corridas).forEach(c=>{const lat=corridaLat(c),lng=corridaLng(c);if(isFinite(lat)&&isFinite(lng)&&String(c.status||"").toLowerCase()!=="entregue")pts.push([lat,lng])});
+  pts.length===1?map.setView(pts[0],16):map.fitBounds(pts,{padding:[45,45]});
+}
+carregarTudo();setInterval(carregarTudo,5000);
+</script>
+</body>
+</html>
